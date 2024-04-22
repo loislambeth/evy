@@ -2014,6 +2014,188 @@ func TestArrayRange(t *testing.T) {
 	}
 }
 
+func TestMapRange(t *testing.T) {
+	tests := []testCase{
+		{
+			name: "map range",
+			input: `x := ""
+			for e := range {a:22 b:44}
+				x = e
+			end
+			x = x
+			`,
+			wantStackTop: makeValue(t, "b"),
+			wantBytecode: &Bytecode{
+				Constants: makeValues(t, "", 0, "a", 22, "b", 44, "a", 22, "b", 44, 1),
+				Instructions: makeInstructions(
+					// x := ""
+					mustMake(t, OpConstant, 0),
+					mustMake(t, OpSetGlobal, 0),
+					// for e := range {a: 22 b: 44}
+					// (hidden i := 0)
+					mustMake(t, OpConstant, 1),
+					mustMake(t, OpSetGlobal, 1),
+					mustMake(t, OpGetGlobal, 1), // i
+					// {a: 22 b: 44}
+					mustMake(t, OpConstant, 2),
+					mustMake(t, OpConstant, 3),
+					mustMake(t, OpConstant, 4),
+					mustMake(t, OpConstant, 5),
+					mustMake(t, OpMap, 2),
+					mustMake(t, OpIterRange),
+					mustMake(t, OpJumpOnFalse, 75),
+					// e = m[i]
+					mustMake(t, OpConstant, 6),
+					mustMake(t, OpConstant, 7),
+					mustMake(t, OpConstant, 8),
+					mustMake(t, OpConstant, 9),
+					mustMake(t, OpMap, 2),
+					mustMake(t, OpGetGlobal, 1),
+					mustMake(t, OpIndex),
+					mustMake(t, OpSetGlobal, 2),
+					// x = e
+					mustMake(t, OpGetGlobal, 2),
+					mustMake(t, OpSetGlobal, 0),
+					// (hidden i = i + 1)
+					mustMake(t, OpGetGlobal, 1),
+					mustMake(t, OpConstant, 10),
+					mustMake(t, OpAdd),
+					mustMake(t, OpSetGlobal, 1),
+					// end
+					mustMake(t, OpJump, 12),
+					// x = x
+					mustMake(t, OpGetGlobal, 0),
+					mustMake(t, OpSetGlobal, 0),
+				),
+			},
+		},
+		{
+			name: "map range variable",
+			input: `x := ""
+			y := {a:22 b:44}
+			for e := range y
+				x = e
+			end
+			x = x
+			`,
+			wantStackTop: makeValue(t, "b"),
+			wantBytecode: &Bytecode{
+				Constants: makeValues(t, "", "a", 22, "b", 44, 0, 1),
+				Instructions: makeInstructions(
+					// x := ""
+					mustMake(t, OpConstant, 0),
+					mustMake(t, OpSetGlobal, 0),
+					// y := {a: 22 b: 44}
+					mustMake(t, OpConstant, 1),
+					mustMake(t, OpConstant, 2),
+					mustMake(t, OpConstant, 3),
+					mustMake(t, OpConstant, 4),
+					mustMake(t, OpMap, 2),
+					mustMake(t, OpSetGlobal, 1),
+					// for e := range y
+					// (hidden i := 0)
+					mustMake(t, OpConstant, 5),
+					mustMake(t, OpSetGlobal, 2),
+					mustMake(t, OpGetGlobal, 2), // i
+					mustMake(t, OpGetGlobal, 1), // y
+					mustMake(t, OpIterRange),
+					mustMake(t, OpJumpOnFalse, 69),
+					// (hidden e = m[i])
+					mustMake(t, OpGetGlobal, 1),
+					mustMake(t, OpGetGlobal, 2),
+					mustMake(t, OpIndex),
+					mustMake(t, OpSetGlobal, 3),
+					// x = e
+					mustMake(t, OpGetGlobal, 3),
+					mustMake(t, OpSetGlobal, 0),
+					// (hidden i = i + 1)
+					mustMake(t, OpGetGlobal, 2),
+					mustMake(t, OpConstant, 6),
+					mustMake(t, OpAdd),
+					mustMake(t, OpSetGlobal, 2),
+					// end
+					mustMake(t, OpJump, 30),
+					// x = x
+					mustMake(t, OpGetGlobal, 0),
+					mustMake(t, OpSetGlobal, 0),
+				),
+			},
+		},
+		{
+			name: "map range break",
+			input: `x := ""
+			for x := range {a:22 b:44}
+				if x == "a"
+					break
+				end
+			end
+			x = x
+			`,
+			wantStackTop: makeValue(t, "a"),
+			wantBytecode: &Bytecode{
+				Constants: makeValues(t, "", 0, "a", 22, "b", 44, "a", 22, "b", 44, "a", 1),
+				Instructions: makeInstructions(
+					// x := ""
+					mustMake(t, OpConstant, 0),
+					mustMake(t, OpSetGlobal, 0),
+					// for e := range {a: 22 b: 44}
+					// (hidden i := 0)
+					mustMake(t, OpConstant, 1),
+					mustMake(t, OpSetGlobal, 1),
+					mustMake(t, OpGetGlobal, 1), // i
+					// {a: 22 b: 44}
+					mustMake(t, OpConstant, 2),
+					mustMake(t, OpConstant, 3),
+					mustMake(t, OpConstant, 4),
+					mustMake(t, OpConstant, 5),
+					mustMake(t, OpMap, 2),
+					mustMake(t, OpIterRange),
+					mustMake(t, OpJumpOnFalse, 85),
+					// e = m[i]
+					mustMake(t, OpConstant, 6),
+					mustMake(t, OpConstant, 7),
+					mustMake(t, OpConstant, 8),
+					mustMake(t, OpConstant, 9),
+					mustMake(t, OpMap, 2),
+					mustMake(t, OpGetGlobal, 1),
+					mustMake(t, OpIndex),
+					mustMake(t, OpSetGlobal, 0),
+					// 	if x == "a"
+					mustMake(t, OpGetGlobal, 0),
+					mustMake(t, OpConstant, 10),
+					mustMake(t, OpEqual),
+					mustMake(t, OpJumpOnFalse, 72),
+					// 		break
+					mustMake(t, OpJump, 85),
+					// 	end
+					mustMake(t, OpJump, 72),
+					// (hidden i = i + 1)
+					mustMake(t, OpGetGlobal, 1),
+					mustMake(t, OpConstant, 11),
+					mustMake(t, OpAdd),
+					mustMake(t, OpSetGlobal, 1),
+					// end
+					mustMake(t, OpJump, 12),
+					// x = x
+					mustMake(t, OpGetGlobal, 0),
+					mustMake(t, OpSetGlobal, 0),
+				),
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			bytecode := compileBytecode(t, tt.input)
+			assertBytecode(t, tt.wantBytecode, bytecode)
+			vm := NewVM(bytecode)
+			err := vm.Run()
+			assert.NoError(t, err, "runtime error")
+			got := vm.lastPoppedStackElem()
+			assert.Equal(t, tt.wantStackTop, got)
+		})
+	}
+}
+
 type pair struct {
 	k string
 	v any
