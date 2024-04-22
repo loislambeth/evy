@@ -284,6 +284,8 @@ func (c *Compiler) compileIterRange(stmt *parser.ForStmt) error {
 	}
 	// assign the loopvar if it is declared, this is run on every loop
 	// and updates the value with the incremented index.
+	// For map types, this statement is invalid to the parser (e.g m[1])
+	// but is used to index into the order of a mapVal in the vm.
 	if stmt.LoopVar != nil {
 		err = c.compileDecl(&parser.Decl{
 			Var: stmt.LoopVar,

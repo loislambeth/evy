@@ -254,6 +254,8 @@ func (vm *VM) Run() error {
 			switch iter := iter.(type) {
 			case arrayVal:
 				err = vm.push(boolVal(int(index) < len(iter.Elements)))
+			case mapVal:
+				err = vm.push(boolVal(int(index) < len(iter.m)))
 			}
 		}
 		if err != nil {
