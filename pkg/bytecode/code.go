@@ -108,6 +108,9 @@ const (
 	// OpStepRange represents a range over a numeric start, stop and
 	// step.
 	OpStepRange
+	// OpIterRange represents a range over an iterable structure
+	// (an array or map).
+	OpIterRange
 )
 
 var (
@@ -167,6 +170,7 @@ var definitions = map[Opcode]*OpDefinition{
 	OpJump:        {"OpJump", []int{2}},
 	OpJumpOnFalse: {"OpJumpOnFalse", []int{2}},
 	OpStepRange:   {"OpStepRange", nil},
+	OpIterRange:   {"OpIterRange", nil},
 }
 
 // OpDefinition defines a name and expected operand width for each OpCode.

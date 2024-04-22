@@ -243,6 +243,13 @@ func (vm *VM) Run() error {
 			if err != nil {
 				return err
 			}
+		case OpIterRange:
+			iter := vm.pop()
+			index := vm.popNumVal()
+			switch iter := iter.(type) {
+			case arrayVal:
+				err = vm.push(boolVal(int(index) < len(iter.Elements)))
+			}
 		}
 		if err != nil {
 			return err
