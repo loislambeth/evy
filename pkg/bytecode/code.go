@@ -79,9 +79,8 @@ const (
 	// number of times.
 	OpArrayRepeat
 	// OpMap represents a map literal, the operand N is the length of
-	// the map multiplied by 2. This length N represents the total length
-	// of the flattened map in the stack, where keys and values have been
-	// pushed sequentially (k1, v1, k2, v2...).
+	// the map. The keys and values are read sequentially from the
+	// stack (e.g. k1, v1, k2, v2...).
 	OpMap
 	// OpIndex represents an index operator used on an array, map or
 	// string variable.

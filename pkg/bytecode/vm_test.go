@@ -1063,7 +1063,7 @@ func TestMap(t *testing.T) {
 		{
 			name:         "empty",
 			input:        "x := {}",
-			wantStackTop: makeValue(t, map[string]any{}),
+			wantStackTop: makeValue(t, []pair{}),
 			wantBytecode: &Bytecode{
 				Constants: nil,
 				Instructions: makeInstructions(
@@ -1075,7 +1075,7 @@ func TestMap(t *testing.T) {
 		{
 			name:         "assignment",
 			input:        "x := {a: 1 b: 2}",
-			wantStackTop: makeValue(t, map[string]any{"a": 1, "b": 2}),
+			wantStackTop: makeValue(t, []pair{{"a", 1}, {"b", 2}}),
 			wantBytecode: &Bytecode{
 				Constants: makeValues(t, "a", 1, "b", 2),
 				Instructions: makeInstructions(
@@ -1083,7 +1083,7 @@ func TestMap(t *testing.T) {
 					mustMake(t, OpConstant, 1),
 					mustMake(t, OpConstant, 2),
 					mustMake(t, OpConstant, 3),
-					mustMake(t, OpMap, 4),
+					mustMake(t, OpMap, 2),
 					mustMake(t, OpSetGlobal, 0),
 				),
 			},
@@ -1099,10 +1099,35 @@ func TestMap(t *testing.T) {
 					mustMake(t, OpConstant, 1),
 					mustMake(t, OpConstant, 2),
 					mustMake(t, OpConstant, 3),
-					mustMake(t, OpMap, 4),
+					mustMake(t, OpMap, 2),
 					mustMake(t, OpConstant, 4),
 					mustMake(t, OpIndex),
 					mustMake(t, OpSetGlobal, 0),
+				),
+			},
+		},
+		{
+			name: "nested assignment",
+			input: `y := {a: {c: 1} b: {d: 2}}
+			x := y["b"]`,
+			wantStackTop: makeValue(t, []pair{{"d", 2}}),
+			wantBytecode: &Bytecode{
+				Constants: makeValues(t, "a", "c", 1, "b", "d", 2, "b"),
+				Instructions: makeInstructions(
+					mustMake(t, OpConstant, 0),
+					mustMake(t, OpConstant, 1),
+					mustMake(t, OpConstant, 2),
+					mustMake(t, OpMap, 1),
+					mustMake(t, OpConstant, 3),
+					mustMake(t, OpConstant, 4),
+					mustMake(t, OpConstant, 5),
+					mustMake(t, OpMap, 1),
+					mustMake(t, OpMap, 2),
+					mustMake(t, OpSetGlobal, 0),
+					mustMake(t, OpGetGlobal, 0),
+					mustMake(t, OpConstant, 6),
+					mustMake(t, OpIndex),
+					mustMake(t, OpSetGlobal, 1),
 				),
 			},
 		},
@@ -1989,6 +2014,11 @@ func TestArrayRange(t *testing.T) {
 	}
 }
 
+type pair struct {
+	k string
+	v any
+}
+
 func compileBytecode(t *testing.T, input string) *Bytecode {
 	t.Helper()
 	// add x = x to the input so it parses correctly
@@ -2009,10 +2039,14 @@ func makeValue(t *testing.T, a any) value {
 	switch v := a.(type) {
 	case []any:
 		return arrayVal{Elements: makeValues(t, v...)}
-	case map[string]any:
-		m := mapVal{}
-		for key, val := range v {
-			m[key] = makeValue(t, val)
+	case []pair:
+		m := mapVal{
+			order: make([]stringVal, 0),
+			m:     make(map[stringVal]value),
+		}
+		for _, pair := range v {
+			m.m[stringVal(pair.k)] = makeValue(t, pair.v)
+			m.order = append(m.order, stringVal(pair.k))
 		}
 		return m
 	case string:
