@@ -246,11 +246,91 @@ func (c *Compiler) compileBlockStatement(block *parser.BlockStatement) error {
 func (c *Compiler) compileForStatement(stmt *parser.ForStmt) error {
 	t := stmt.Range.Type()
 	switch t.Name {
+	case parser.ARRAY, parser.MAP:
+return c.compileIterRange(stmt)
 	case parser.NUM:
 		return c.compileStepRange(stmt)
 	default:
 		return fmt.Errorf("%w: range over unknown type %T", ErrInternal, t)
 	}
+}
+
+func (c *Compiler) compileIterRange(stmt *parser.ForStmt) error {
+	indexVar := &parser.Var{
+		T: parser.NUM_TYPE,
+	}
+	err := c.compileDecl(&parser.Decl{
+		Var:   indexVar,
+		Value: &parser.NumLiteral{Value: 0},
+	})
+	if err != nil {
+		return err
+	}
+	// condition
+	condPos := len(c.instructions)
+	if err := c.Compile(indexVar); err != nil {
+		return err
+	}
+	if err := c.Compile(stmt.Range); err != nil {
+		return err
+	}
+	if err := c.emit(OpIterRange); err != nil {
+		return err
+	}
+	// jumpOnFalse will have its placeholder swapped for the endPos
+	jumpOnFalsePos, err := c.emitPos(OpJumpOnFalse, JumpPlaceholder)
+	if err != nil {
+		return err
+	}
+	// assign the loopvar if it is declared, this is run on every loop
+	// and updates the value with the incremented index.
+	if stmt.LoopVar != nil {
+		err = c.compileDecl(&parser.Decl{
+			Var: stmt.LoopVar,
+			Value: &parser.IndexExpression{
+				T:     stmt.Range.Type(),
+				Left:  stmt.Range,
+				Index: indexVar,
+			},
+		})
+		if err != nil {
+			return err
+		}
+	}
+	// take a snapshot of the break list before compiling the body of
+	// the loop
+	outOfScopeBreaks := c.breaks
+	c.breaks = []int{}
+	if err := c.Compile(stmt.Block); err != nil {
+		return err
+	}
+	// increment the index
+	err = c.Compile(&parser.AssignmentStmt{
+		Target: indexVar,
+		Value: &parser.BinaryExpression{
+			T:     parser.NUM_TYPE,
+			Op:    parser.OP_PLUS,
+			Left:  indexVar,
+			Right: &parser.NumLiteral{Value: 1},
+		},
+	})
+	if err != nil {
+		return err
+	}
+	// Jump back to start of while condition
+	if err := c.emit(OpJump, condPos); err != nil {
+		return err
+	}
+	endPos := len(c.instructions)
+	c.instructions.changeOperand(jumpOnFalsePos, endPos)
+	// rewrite the JumpPlaceholder in the break statements to jump
+	// to the end of the loop
+	for _, breakPos := range c.breaks {
+		c.instructions.changeOperand(breakPos, endPos)
+	}
+	// reset the break list
+	c.breaks = outOfScopeBreaks
+	return nil
 }
 
 func (c *Compiler) compileStepRange(stmt *parser.ForStmt) error {
