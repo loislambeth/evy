@@ -114,7 +114,7 @@ func (c *Compiler) Compile(node parser.Node) error {
 				return err
 			}
 		}
-		if err := c.emit(OpMap, len(node.Pairs)*2); err != nil {
+		if err := c.emit(OpMap, len(node.Pairs)); err != nil {
 			return err
 		}
 	}
@@ -247,7 +247,7 @@ func (c *Compiler) compileForStatement(stmt *parser.ForStmt) error {
 	t := stmt.Range.Type()
 	switch t.Name {
 	case parser.ARRAY, parser.MAP:
-return c.compileIterRange(stmt)
+		return c.compileIterRange(stmt)
 	case parser.NUM:
 		return c.compileStepRange(stmt)
 	default:
