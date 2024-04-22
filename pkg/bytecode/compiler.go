@@ -63,6 +63,8 @@ func (c *Compiler) Compile(node parser.Node) error {
 		return c.compileBreakStatement(node)
 	case *parser.BlockStatement:
 		return c.compileBlockStatement(node)
+	case *parser.ForStmt:
+		return c.compileForStatement(node)
 	case *parser.IfStmt:
 		return c.compileIfStatement(node)
 	case *parser.WhileStmt:
@@ -238,6 +240,85 @@ func (c *Compiler) compileBlockStatement(block *parser.BlockStatement) error {
 			return err
 		}
 	}
+	return nil
+}
+
+func (c *Compiler) compileForStatement(stmt *parser.ForStmt) error {
+	t := stmt.Range.Type()
+	switch t.Name {
+	case parser.NUM:
+		return c.compileStepRange(stmt)
+	default:
+		return fmt.Errorf("%w: range over unknown type %T", ErrInternal, t)
+	}
+}
+
+func (c *Compiler) compileStepRange(stmt *parser.ForStmt) error {
+	ranger := stmt.Range.(*parser.StepRange)
+	loopVar := stmt.LoopVar
+	if loopVar == nil {
+		loopVar = &parser.Var{
+			T: parser.NUM_TYPE,
+		}
+	}
+	err := c.compileDecl(&parser.Decl{
+		Var:   loopVar,
+		Value: ranger.GetStart(),
+	})
+	if err != nil {
+		return err
+	}
+	// condition
+	condPos := len(c.instructions)
+	if err := c.Compile(loopVar); err != nil {
+		return err
+	}
+	if err := c.Compile(ranger.GetStep()); err != nil {
+		return err
+	}
+	if err := c.Compile(ranger.GetStop()); err != nil {
+		return err
+	}
+	if err := c.emit(OpStepRange); err != nil {
+		return err
+	}
+	jumpOnFalsePos, err := c.emitPos(OpJumpOnFalse, JumpPlaceholder)
+	if err != nil {
+		return err
+	}
+	// take a snapshot of the break list before compiling the body of
+	// the loop
+	outOfScopeBreaks := c.breaks
+	c.breaks = []int{}
+	if err := c.Compile(stmt.Block); err != nil {
+		return err
+	}
+	// increment
+	err = c.compileDecl(&parser.Decl{
+		Var: loopVar,
+		Value: &parser.BinaryExpression{
+			T:     parser.NUM_TYPE,
+			Op:    parser.OP_PLUS,
+			Left:  loopVar,
+			Right: ranger.GetStep(),
+		},
+	})
+	if err != nil {
+		return err
+	}
+	// Jump back to start of while condition
+	if err := c.emit(OpJump, condPos); err != nil {
+		return err
+	}
+	endPos := len(c.instructions)
+	c.instructions.changeOperand(jumpOnFalsePos, endPos)
+	// rewrite the JumpPlaceholder in the break statements to jump
+	// to the end of the loop
+	for _, breakPos := range c.breaks {
+		c.instructions.changeOperand(breakPos, endPos)
+	}
+	// reset the break list
+	c.breaks = outOfScopeBreaks
 	return nil
 }
 
