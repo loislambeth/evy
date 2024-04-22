@@ -661,6 +661,312 @@ func TestWhile(t *testing.T) {
 	}
 }
 
+//nolint:maintidx // This function is not complex by any measure.
+func TestStepRange(t *testing.T) {
+	tests := []testCase{
+		{
+			name: "for range default start and step",
+			input: `x := 0
+			for range 10
+				x = x + 1
+			end
+			x = x`,
+			wantStackTop: makeValue(t, 10),
+			wantBytecode: &Bytecode{
+				Constants: makeValues(t, 0, 0, 1, 10, 1, 1),
+				Instructions: makeInstructions(
+					// x := 0
+					mustMake(t, OpConstant, 0),
+					mustMake(t, OpSetGlobal, 0),
+					// for range 10 (hidden i := 0)
+					mustMake(t, OpConstant, 1),
+					mustMake(t, OpSetGlobal, 1),
+					mustMake(t, OpGetGlobal, 1), // i
+					mustMake(t, OpConstant, 2),  // 1
+					mustMake(t, OpConstant, 3),  // 10
+					mustMake(t, OpStepRange),
+					mustMake(t, OpJumpOnFalse, 48),
+					// x = x + 1
+					mustMake(t, OpGetGlobal, 0),
+					mustMake(t, OpConstant, 4),
+					mustMake(t, OpAdd),
+					mustMake(t, OpSetGlobal, 0),
+					// (hidden i = i + 1)
+					mustMake(t, OpGetGlobal, 1),
+					mustMake(t, OpConstant, 5),
+					mustMake(t, OpAdd),
+					mustMake(t, OpSetGlobal, 1),
+					// end
+					mustMake(t, OpJump, 12),
+					// x = x
+					mustMake(t, OpGetGlobal, 0),
+					mustMake(t, OpSetGlobal, 0),
+				),
+			},
+		},
+		{
+			name: "for range default step",
+			input: `x := 0
+			for range 2 10
+				x = x + 1
+			end
+			x = x`,
+			wantStackTop: makeValue(t, 8),
+			wantBytecode: &Bytecode{
+				Constants: makeValues(t, 0, 2, 1, 10, 1, 1),
+				Instructions: makeInstructions(
+					// x := 0
+					mustMake(t, OpConstant, 0),
+					mustMake(t, OpSetGlobal, 0),
+					// for range 10 (hidden i := 2)
+					mustMake(t, OpConstant, 1),
+					mustMake(t, OpSetGlobal, 1),
+					mustMake(t, OpGetGlobal, 1), // i
+					mustMake(t, OpConstant, 2),  // 1
+					mustMake(t, OpConstant, 3),  // 10
+					mustMake(t, OpStepRange),
+					mustMake(t, OpJumpOnFalse, 48),
+					// x = x + 1
+					mustMake(t, OpGetGlobal, 0),
+					mustMake(t, OpConstant, 4),
+					mustMake(t, OpAdd),
+					mustMake(t, OpSetGlobal, 0),
+					// (hidden i = i + 1)
+					mustMake(t, OpGetGlobal, 1),
+					mustMake(t, OpConstant, 5),
+					mustMake(t, OpAdd),
+					mustMake(t, OpSetGlobal, 1),
+					// end
+					mustMake(t, OpJump, 12),
+					// x = x
+					mustMake(t, OpGetGlobal, 0),
+					mustMake(t, OpSetGlobal, 0),
+				),
+			},
+		},
+		{
+			name: "for range var",
+			input: `x := 0
+			for i := range 10
+				x = i
+			end
+			x = x`,
+			wantStackTop: makeValue(t, 9),
+			wantBytecode: &Bytecode{
+				Constants: makeValues(t, 0, 0, 1, 10, 1),
+				Instructions: makeInstructions(
+					// x := 0
+					mustMake(t, OpConstant, 0),
+					mustMake(t, OpSetGlobal, 0),
+					// for range 10 (hidden i := 0)
+					mustMake(t, OpConstant, 1),
+					mustMake(t, OpSetGlobal, 1),
+					mustMake(t, OpGetGlobal, 1), // i
+					mustMake(t, OpConstant, 2),  // 1
+					mustMake(t, OpConstant, 3),  // 10
+					mustMake(t, OpStepRange),
+					mustMake(t, OpJumpOnFalse, 44),
+					// x = i
+					mustMake(t, OpGetGlobal, 1),
+					mustMake(t, OpSetGlobal, 0),
+					// (hidden i = i + 1)
+					mustMake(t, OpGetGlobal, 1),
+					mustMake(t, OpConstant, 4),
+					mustMake(t, OpAdd),
+					mustMake(t, OpSetGlobal, 1),
+					// end
+					mustMake(t, OpJump, 12),
+					// x = x
+					mustMake(t, OpGetGlobal, 0),
+					mustMake(t, OpSetGlobal, 0),
+				),
+			},
+		},
+		{
+			name: "for range step",
+			input: `x := 0
+			for i := range 0 10 4
+				x = i
+			end
+			x = x`,
+			wantStackTop: makeValue(t, 8),
+			wantBytecode: &Bytecode{
+				Constants: makeValues(t, 0, 0, 4, 10, 4),
+				Instructions: makeInstructions(
+					// x := 0
+					mustMake(t, OpConstant, 0),
+					mustMake(t, OpSetGlobal, 0),
+					// for range 10 (hidden i := 0)
+					mustMake(t, OpConstant, 1),
+					mustMake(t, OpSetGlobal, 1),
+					mustMake(t, OpGetGlobal, 1), // i
+					mustMake(t, OpConstant, 2),  // 4
+					mustMake(t, OpConstant, 3),  // 10
+					mustMake(t, OpStepRange),
+					mustMake(t, OpJumpOnFalse, 44),
+					// x = i
+					mustMake(t, OpGetGlobal, 1),
+					mustMake(t, OpSetGlobal, 0),
+					// (hidden i = i + 4)
+					mustMake(t, OpGetGlobal, 1),
+					mustMake(t, OpConstant, 4),
+					mustMake(t, OpAdd),
+					mustMake(t, OpSetGlobal, 1),
+					// end
+					mustMake(t, OpJump, 12),
+					// x = x
+					mustMake(t, OpGetGlobal, 0),
+					mustMake(t, OpSetGlobal, 0),
+				),
+			},
+		},
+		{
+			name: "for range negative step",
+			input: `x := 0
+			for i := range 10 0 -1
+				x = i
+			end
+			x = x`,
+			wantStackTop: makeValue(t, 1),
+			wantBytecode: &Bytecode{
+				Constants: makeValues(t, 0, 10, 1, 0, 1),
+				Instructions: makeInstructions(
+					// x := 0
+					mustMake(t, OpConstant, 0),
+					mustMake(t, OpSetGlobal, 0),
+					// for range 10 (hidden i := 0)
+					mustMake(t, OpConstant, 1),
+					mustMake(t, OpSetGlobal, 1),
+					mustMake(t, OpGetGlobal, 1), // i
+					mustMake(t, OpConstant, 2),  // -1
+					mustMake(t, OpMinus),
+					mustMake(t, OpConstant, 3), // 10
+					mustMake(t, OpStepRange),
+					mustMake(t, OpJumpOnFalse, 46),
+					// x = i
+					mustMake(t, OpGetGlobal, 1),
+					mustMake(t, OpSetGlobal, 0),
+					// (hidden i = i - 1)
+					mustMake(t, OpGetGlobal, 1),
+					mustMake(t, OpConstant, 4),
+					mustMake(t, OpMinus),
+					mustMake(t, OpAdd),
+					mustMake(t, OpSetGlobal, 1),
+					// end
+					mustMake(t, OpJump, 12),
+					// x = x
+					mustMake(t, OpGetGlobal, 0),
+					mustMake(t, OpSetGlobal, 0),
+				),
+			},
+		},
+		{
+			name: "for range invalid stop",
+			input: `x := 0
+			for range -10
+				x = x + 1
+			end
+			x = x`,
+			wantStackTop: makeValue(t, 0),
+			wantBytecode: &Bytecode{
+				Constants: makeValues(t, 0, 0, 1, 10, 1, 1),
+				Instructions: makeInstructions(
+					// x := 0
+					mustMake(t, OpConstant, 0),
+					mustMake(t, OpSetGlobal, 0),
+					// for range 10 (hidden i := 0)
+					mustMake(t, OpConstant, 1),
+					mustMake(t, OpSetGlobal, 1),
+					mustMake(t, OpGetGlobal, 1), // i
+					mustMake(t, OpConstant, 2),  // 1
+					mustMake(t, OpConstant, 3),  // -10
+					mustMake(t, OpMinus),
+					mustMake(t, OpStepRange),
+					mustMake(t, OpJumpOnFalse, 49),
+					// x = x + 1
+					mustMake(t, OpGetGlobal, 0),
+					mustMake(t, OpConstant, 4),
+					mustMake(t, OpAdd),
+					mustMake(t, OpSetGlobal, 0),
+					// (hidden i = i + 1)
+					mustMake(t, OpGetGlobal, 1),
+					mustMake(t, OpConstant, 5),
+					mustMake(t, OpAdd),
+					mustMake(t, OpSetGlobal, 1),
+					// end
+					mustMake(t, OpJump, 12),
+					// x = x
+					mustMake(t, OpGetGlobal, 0),
+					mustMake(t, OpSetGlobal, 0),
+				),
+			},
+		},
+		{
+			name: "for break",
+			input: `x := 0
+			for range 5
+				x = x + 1
+				if x == 3 
+                    break
+                end
+			end
+			x = x`,
+			wantStackTop: makeValue(t, 3),
+			wantBytecode: &Bytecode{
+				Constants: makeValues(t, 0, 0, 1, 5, 1, 3, 1),
+				Instructions: makeInstructions(
+					// x := 0
+					mustMake(t, OpConstant, 0),
+					mustMake(t, OpSetGlobal, 0),
+					// for range 10 (hidden i := 0)
+					mustMake(t, OpConstant, 1),
+					mustMake(t, OpSetGlobal, 1),
+					mustMake(t, OpGetGlobal, 1), // i
+					mustMake(t, OpConstant, 2),  // 1
+					mustMake(t, OpConstant, 3),  // 5
+					mustMake(t, OpStepRange),
+					mustMake(t, OpJumpOnFalse, 64),
+					// x = x + 1
+					mustMake(t, OpGetGlobal, 0),
+					mustMake(t, OpConstant, 4),
+					mustMake(t, OpAdd),
+					mustMake(t, OpSetGlobal, 0),
+					// if x == 3
+					mustMake(t, OpGetGlobal, 0),
+					mustMake(t, OpConstant, 5),
+					mustMake(t, OpEqual),
+					mustMake(t, OpJumpOnFalse, 51),
+					// break
+					mustMake(t, OpJump, 64),
+					// end
+					mustMake(t, OpJump, 51),
+					// (hidden i = i + 1)
+					mustMake(t, OpGetGlobal, 1),
+					mustMake(t, OpConstant, 6),
+					mustMake(t, OpAdd),
+					mustMake(t, OpSetGlobal, 1),
+					// end
+					mustMake(t, OpJump, 12),
+					// x = x
+					mustMake(t, OpGetGlobal, 0),
+					mustMake(t, OpSetGlobal, 0),
+				),
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			bytecode := compileBytecode(t, tt.input)
+			assertBytecode(t, tt.wantBytecode, bytecode)
+			vm := NewVM(bytecode)
+			err := vm.Run()
+			assert.NoError(t, err, "runtime error")
+			got := vm.lastPoppedStackElem()
+			assert.Equal(t, tt.wantStackTop, got)
+		})
+	}
+}
+
 func compileBytecode(t *testing.T, input string) *Bytecode {
 	t.Helper()
 	// add x = x to the input so it parses correctly

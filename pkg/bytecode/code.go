@@ -105,6 +105,9 @@ const (
 	// boolean and evaluate it. It will jump to the instruction address
 	// in its operand if the condition evaluates to false.
 	OpJumpOnFalse
+	// OpStepRange represents a range over a numeric start, stop and
+	// step.
+	OpStepRange
 )
 
 var (
@@ -163,6 +166,7 @@ var definitions = map[Opcode]*OpDefinition{
 	OpNone:        {"OpNone", nil},
 	OpJump:        {"OpJump", []int{2}},
 	OpJumpOnFalse: {"OpJumpOnFalse", []int{2}},
+	OpStepRange:   {"OpStepRange", nil},
 }
 
 // OpDefinition defines a name and expected operand width for each OpCode.
