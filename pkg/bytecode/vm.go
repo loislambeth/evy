@@ -231,6 +231,18 @@ func (vm *VM) Run() error {
 				// unread operand
 				ip += 2
 			}
+		case OpStepRange:
+			stop := vm.popNumVal()
+			step := vm.popNumVal()
+			index := vm.popNumVal()
+			if step > 0 {
+				err = vm.push(boolVal(index < stop))
+			} else {
+				err = vm.push(boolVal(index > stop))
+			}
+			if err != nil {
+				return err
+			}
 		}
 		if err != nil {
 			return err
