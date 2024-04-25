@@ -10,12 +10,20 @@ const (
 	// OpConstant defines a constant that will be referred to by index
 	// in the bytecode.
 	OpConstant Opcode = iota
-	// OpGetGlobal retrieves a symbol from the symbol table at the
+	// OpGetGlobal retrieves a symbol from the global symbol table at the
 	// specified index.
 	OpGetGlobal
-	// OpSetGlobal adds a symbol to the specified index in the symbol
-	// table.
+	// OpSetGlobal adds a symbol to the specified index in the global
+	// symbol table.
 	OpSetGlobal
+	// OpGetLocal retrieves a symbol from the current local-scoped
+	// symbol table at the specified index. This index also corresponds
+	// to its location on the VM stack.
+	OpGetLocal
+	// OpSetLocal adds a symbol to the specified index in the current
+	// local-scoped symbol table. This index also corresponds to its
+	// location on the VM stack.
+	OpSetLocal
 	// OpAdd instructs the virtual machine to perform an addition.
 	OpAdd
 	// OpSubtract instructs the virtual machine to perform a subtraction.
@@ -136,6 +144,8 @@ var definitions = map[Opcode]*OpDefinition{
 	OpConstant:  {"OpConstant", []int{2}},
 	OpGetGlobal: {"OpGetGlobal", []int{2}},
 	OpSetGlobal: {"OpSetGlobal", []int{2}},
+	OpGetLocal:  {"OpGetLocal", []int{2}},
+	OpSetLocal:  {"OpSetLocal", []int{2}},
 	// Operations like OpAdd have no operand width because the virtual
 	// machine is expected to pop the values from the stack when reading
 	// this instruction.

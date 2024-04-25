@@ -30,7 +30,7 @@ var (
 type Compiler struct {
 	constants    []value
 	instructions Instructions
-	globals      *SymbolTable
+	symbolTable  *SymbolTable
 	// breaks tracks the positions of break statements in the inner-most loop.
 	breaks []int
 }
@@ -43,7 +43,7 @@ type Bytecode struct {
 
 // NewCompiler returns a new compiler.
 func NewCompiler() *Compiler {
-	return &Compiler{globals: NewSymbolTable()}
+	return &Compiler{symbolTable: NewSymbolTable()}
 }
 
 // Compile accepts an AST node and renders it to bytecode internally.
@@ -417,6 +417,7 @@ func (c *Compiler) compileStepRange(stmt *parser.ForStmt) error {
 }
 
 func (c *Compiler) compileIfStatement(stmt *parser.IfStmt) error {
+	c.enterScope()
 	firstJumpPos, err := c.compileConditionalBlock(stmt.IfBlock)
 	if err != nil {
 		return err
@@ -441,6 +442,7 @@ func (c *Compiler) compileIfStatement(stmt *parser.IfStmt) error {
 	for _, jumpPos := range jumpPositions {
 		c.instructions.changeOperand(jumpPos, stmtEndPos)
 	}
+	c.leaveScope()
 	return nil
 }
 
@@ -471,6 +473,7 @@ func (c *Compiler) compileConditionalBlock(block *parser.ConditionalBlock) (int,
 }
 
 func (c *Compiler) compileWhileStatement(stmt *parser.WhileStmt) error {
+	c.enterScope()
 	startPos := len(c.instructions)
 	if err := c.Compile(stmt.Condition); err != nil {
 		return err
@@ -501,6 +504,7 @@ func (c *Compiler) compileWhileStatement(stmt *parser.WhileStmt) error {
 	}
 	// reset the break list
 	c.breaks = outOfScopeBreaks
+	c.leaveScope()
 	return nil
 }
 
@@ -563,8 +567,11 @@ func (c *Compiler) compileDecl(decl *parser.Decl) error {
 	if err := c.Compile(decl.Value); err != nil {
 		return err
 	}
-	symbol := c.globals.Define(decl.Var.Name)
-	return c.emit(OpSetGlobal, symbol.Index)
+	symbol := c.symbolTable.Define(decl.Var.Name)
+	if symbol.Scope == GlobalScope {
+		return c.emit(OpSetGlobal, symbol.Index)
+	}
+	return c.emit(OpSetLocal, symbol.Index)
 }
 
 func (c *Compiler) compileAssignment(stmt *parser.AssignmentStmt) error {
@@ -573,11 +580,15 @@ func (c *Compiler) compileAssignment(stmt *parser.AssignmentStmt) error {
 	}
 	switch target := stmt.Target.(type) {
 	case *parser.Var:
-		symbol, ok := c.globals.Resolve(target.Name)
+		symbol, ok := c.symbolTable.Resolve(target.Name)
 		if !ok {
 			return fmt.Errorf("%w %s", ErrUndefinedVar, target.Name)
 		}
-		return c.emit(OpSetGlobal, symbol.Index)
+		if symbol.Scope == GlobalScope {
+			return c.emit(OpSetGlobal, symbol.Index)
+		} else {
+			return c.emit(OpSetLocal, symbol.Index)
+		}
 	case *parser.IndexExpression:
 		if err := c.Compile(target.Left); err != nil {
 			return err
@@ -591,11 +602,14 @@ func (c *Compiler) compileAssignment(stmt *parser.AssignmentStmt) error {
 }
 
 func (c *Compiler) compileVar(variable *parser.Var) error {
-	symbol, ok := c.globals.Resolve(variable.Name)
+	symbol, ok := c.symbolTable.Resolve(variable.Name)
 	if !ok {
 		return fmt.Errorf("%w %s", ErrUndefinedVar, variable.Name)
 	}
-	return c.emit(OpGetGlobal, symbol.Index)
+	if symbol.Scope == GlobalScope {
+		return c.emit(OpGetGlobal, symbol.Index)
+	}
+	return c.emit(OpGetLocal, symbol.Index)
 }
 
 func (c *Compiler) compileIndexExpression(expr *parser.IndexExpression) error {
@@ -633,4 +647,12 @@ func (c *Compiler) compileReturn(stmt *parser.ReturnStmt) error {
 		return err
 	}
 	return c.emit(OpReturn)
+}
+
+func (c *Compiler) enterScope() {
+	c.symbolTable = newEnclosedSymbolTable(c.symbolTable)
+}
+
+func (c *Compiler) leaveScope() {
+	c.symbolTable = c.symbolTable.Outer
 }
