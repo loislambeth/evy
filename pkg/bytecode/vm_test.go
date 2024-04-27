@@ -856,7 +856,7 @@ func TestFunctions(t *testing.T) {
 			name: "simple",
 			input: `
 			func add:num
-				return 1+2
+				return 1 + 2
 			end
 			x := add`,
 			wantStackTop: makeValue(t, 3),
