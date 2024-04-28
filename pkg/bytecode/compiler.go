@@ -244,169 +244,90 @@ func (c *Compiler) compileBlockStatement(block *parser.BlockStatement) error {
 }
 
 func (c *Compiler) compileForStatement(stmt *parser.ForStmt) error {
-	t := stmt.Range.Type()
-	switch t.Name {
-	case parser.ARRAY, parser.MAP:
-		return c.compileIterRange(stmt)
+	var rangeOp Opcode
+	switch t := stmt.Range.Type(); t.Name {
+	case parser.STRING, parser.ARRAY, parser.MAP:
+		rangeOp = OpIterRange
+		// Push the iterable and current index (0) on to the stack for OpIterRange
+		if err := c.Compile(stmt.Range); err != nil {
+			return err
+		}
+		if err := c.emit(OpConstant, c.addConstant(numVal(0))); err != nil {
+			return err
+		}
 	case parser.NUM:
-		return c.compileStepRange(stmt)
+		rangeOp = OpStepRange
+		// Push the stop, step and start values onto the stack for OpStepRange
+		sr := stmt.Range.(*parser.StepRange)
+		if err := c.Compile(sr.GetStop()); err != nil {
+			return err
+		}
+		if err := c.Compile(sr.GetStep()); err != nil {
+			return err
+		}
+		if err := c.Compile(sr.GetStart()); err != nil {
+			return err
+		}
 	default:
 		return fmt.Errorf("%w: range over unknown type %T", ErrInternal, t)
 	}
-}
 
-func (c *Compiler) compileIterRange(stmt *parser.ForStmt) error {
-	indexVar := &parser.Var{
-		T: parser.NUM_TYPE,
-	}
-	err := c.compileDecl(&parser.Decl{
-		Var:   indexVar,
-		Value: &parser.NumLiteral{Value: 0},
-	})
-	if err != nil {
-		return err
-	}
-	// condition
-	condPos := len(c.instructions)
-	if err := c.Compile(indexVar); err != nil {
-		return err
-	}
-	if err := c.Compile(stmt.Range); err != nil {
-		return err
-	}
-	if err := c.emit(OpIterRange); err != nil {
-		return err
-	}
-	// jumpOnFalse will have its placeholder swapped for the endPos
-	jumpOnFalsePos, err := c.emitPos(OpJumpOnFalse, JumpPlaceholder)
-	if err != nil {
-		return err
-	}
-	// assign the loopvar if it is declared, this is run on every loop
-	// and updates the value with the incremented index.
-	// For map types, this statement is invalid to the parser (e.g m[1])
-	// but is used to index into the order of a mapVal in the vm.
+	hasLoopVar := 0
 	if stmt.LoopVar != nil {
-		err = c.compileDecl(&parser.Decl{
-			Var: stmt.LoopVar,
-			Value: &parser.IndexExpression{
-				T:     stmt.Range.Type(),
-				Left:  stmt.Range,
-				Index: indexVar,
-			},
-		})
-		if err != nil {
+		hasLoopVar = 1
+		// declare the loop var with a noneVal to start with. The top
+		// of the loop will overwrite this with a value of the correct type
+		// for the loop.
+		symbol := c.globals.Define(stmt.LoopVar.Name)
+		if err := c.emit(OpNone); err != nil {
+			return err
+		}
+		if err := c.emit(OpSetGlobal, symbol.Index); err != nil {
 			return err
 		}
 	}
-	// take a snapshot of the break list before compiling the body of
-	// the loop
-	outOfScopeBreaks := c.breaks
-	c.breaks = []int{}
-	if err := c.Compile(stmt.Block); err != nil {
+
+	// Top of loop
+	topOfLoop := len(c.instructions)
+
+	if err := c.emit(rangeOp, hasLoopVar); err != nil {
 		return err
 	}
-	// increment the index
-	err = c.Compile(&parser.AssignmentStmt{
-		Target: indexVar,
-		Value: &parser.BinaryExpression{
-			T:     parser.NUM_TYPE,
-			Op:    parser.OP_PLUS,
-			Left:  indexVar,
-			Right: &parser.NumLiteral{Value: 1},
-		},
-	})
+	jumpToEnd, err := c.emitPos(OpJumpOnFalse, JumpPlaceholder)
 	if err != nil {
 		return err
 	}
-	// Jump back to start of while condition
-	if err := c.emit(OpJump, condPos); err != nil {
-		return err
-	}
-	endPos := len(c.instructions)
-	c.instructions.changeOperand(jumpOnFalsePos, endPos)
-	// rewrite the JumpPlaceholder in the break statements to jump
-	// to the end of the loop
-	for _, breakPos := range c.breaks {
-		c.instructions.changeOperand(breakPos, endPos)
-	}
-	// reset the break list
-	c.breaks = outOfScopeBreaks
-	return nil
-}
 
-func (c *Compiler) compileStepRange(stmt *parser.ForStmt) error {
-	ranger := stmt.Range.(*parser.StepRange)
-	start := ranger.Start
-	if start == nil {
-		start = &parser.NumLiteral{Value: 0}
-	}
-	step := ranger.Step
-	if step == nil {
-		step = &parser.NumLiteral{Value: 1}
-	}
-	loopVar := stmt.LoopVar
-	if loopVar == nil {
-		loopVar = &parser.Var{
-			T: parser.NUM_TYPE,
+	// Index the iterable and assign it to the loop var if there is one. The range
+	// op has pushed the value for the loop var onto the stack already
+	if stmt.LoopVar != nil {
+		symbol, ok := c.globals.Resolve(stmt.LoopVar.Name)
+		if !ok {
+			return fmt.Errorf("%w %s", ErrUndefinedVar, stmt.LoopVar.Name)
+		}
+		if err := c.emit(OpSetGlobal, symbol.Index); err != nil {
+			return err
 		}
 	}
-	err := c.compileDecl(&parser.Decl{
-		Var:   loopVar,
-		Value: start,
-	})
-	if err != nil {
-		return err
-	}
-	// condition
-	condPos := len(c.instructions)
-	if err := c.Compile(loopVar); err != nil {
-		return err
-	}
-	if err := c.Compile(step); err != nil {
-		return err
-	}
-	if err := c.Compile(ranger.Stop); err != nil {
-		return err
-	}
-	if err := c.emit(OpStepRange); err != nil {
-		return err
-	}
-	jumpOnFalsePos, err := c.emitPos(OpJumpOnFalse, JumpPlaceholder)
-	if err != nil {
-		return err
-	}
-	// take a snapshot of the break list before compiling the body of
-	// the loop
+
+	// take a snapshot of the break list before compiling the body of the loop
 	outOfScopeBreaks := c.breaks
-	c.breaks = []int{}
+	c.breaks = nil
 	if err := c.Compile(stmt.Block); err != nil {
 		return err
 	}
-	// increment
-	err = c.compileDecl(&parser.Decl{
-		Var: loopVar,
-		Value: &parser.BinaryExpression{
-			T:     parser.NUM_TYPE,
-			Op:    parser.OP_PLUS,
-			Left:  loopVar,
-			Right: step,
-		},
-	})
-	if err != nil {
+
+	if err := c.emit(OpJump, topOfLoop); err != nil {
 		return err
 	}
-	// Jump back to start of while condition
-	if err := c.emit(OpJump, condPos); err != nil {
-		return err
-	}
-	endPos := len(c.instructions)
-	c.instructions.changeOperand(jumpOnFalsePos, endPos)
-	// rewrite the JumpPlaceholder in the break statements to jump
-	// to the end of the loop
+
+	// Patch the loop condition jump and the break statements to jump here.
+	endOfLoop := len(c.instructions)
+	c.instructions.changeOperand(jumpToEnd, endOfLoop)
 	for _, breakPos := range c.breaks {
-		c.instructions.changeOperand(breakPos, endPos)
+		c.instructions.changeOperand(breakPos, endOfLoop)
 	}
+
 	// reset the break list
 	c.breaks = outOfScopeBreaks
 	return nil

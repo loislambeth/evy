@@ -168,8 +168,8 @@ var definitions = map[Opcode]*OpDefinition{
 	OpNone:        {"OpNone", nil},
 	OpJump:        {"OpJump", []int{2}},
 	OpJumpOnFalse: {"OpJumpOnFalse", []int{2}},
-	OpStepRange:   {"OpStepRange", nil},
-	OpIterRange:   {"OpIterRange", nil},
+	OpStepRange:   {"OpStepRange", []int{2}},
+	OpIterRange:   {"OpIterRange", []int{2}},
 }
 
 // OpDefinition defines a name and expected operand width for each OpCode.

@@ -237,26 +237,43 @@ func (vm *VM) Run() error {
 				ip += 2
 			}
 		case OpStepRange:
-			stop := vm.popNumVal()
+			hasLoopVar := int(ReadUint16(vm.instructions[ip+1:]))
+			ip += 2
+			index := vm.popNumVal()
 			step := vm.popNumVal()
-			index := vm.popNumVal()
-			if step > 0 {
-				err = vm.push(boolVal(index < stop))
-			} else {
-				err = vm.push(boolVal(index > stop))
+			stop := vm.popNumVal()
+			stillGoing := (step > 0 && index < stop) || (step < 0 && index > stop)
+			if stillGoing {
+				vm.push(stop)
+				vm.push(step)
+				vm.push(index + step)
+				if hasLoopVar != 0 {
+					vm.push(index)
+				}
 			}
-			if err != nil {
-				return err
-			}
+			err = vm.push(boolVal(stillGoing))
 		case OpIterRange:
+			hasLoopVar := int(ReadUint16(vm.instructions[ip+1:]))
+			ip += 2
+			index := int(vm.popNumVal())
 			iter := vm.pop()
-			index := vm.popNumVal()
-			switch iter := iter.(type) {
-			case arrayVal:
-				err = vm.push(boolVal(int(index) < len(iter.Elements)))
-			case mapVal:
-				err = vm.push(boolVal(int(index) < len(iter.m)))
+			var val value
+			if a, ok := iter.(arrayVal); ok && index < len(a.Elements) {
+				val = a.Elements[index]
+			} else if m, ok := iter.(mapVal); ok && index < len(m.order) {
+				val = m.order[index]
+			} else if s, ok := iter.(stringVal); ok && index < len(s) {
+				val = s[index : index+1]
 			}
+			if val != nil {
+				// not nil means we're still going
+				vm.push(iter)
+				vm.push(numVal(index + 1))
+				if hasLoopVar != 0 {
+					vm.push(val)
+				}
+			}
+			err = vm.push(boolVal(val != nil))
 		}
 		if err != nil {
 			return err

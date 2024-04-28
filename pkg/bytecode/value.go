@@ -213,20 +213,12 @@ func (m mapVal) Equals(v value) bool {
 }
 
 func (m mapVal) Index(idx value) (value, error) {
-	switch idx := idx.(type) {
-	case stringVal:
-		val, ok := m.m[idx]
-		if !ok {
-			return nil, fmt.Errorf("%w %q", ErrMapKey, idx)
-		}
-		return val, nil
-	case numVal:
-		// special case where ranging over a map uses a numVal to
-		// access the order
-		key := m.order[int(idx)]
-		return key, nil
+	k := idx.(stringVal)
+	val, ok := m.m[k]
+	if !ok {
+		return nil, fmt.Errorf("%w %q", ErrMapKey, idx)
 	}
-	return nil, nil
+	return val, nil
 }
 
 type noneVal struct{}
