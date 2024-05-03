@@ -118,7 +118,8 @@ const (
 	// OpIterRange represents a range over an iterable structure
 	// (an array or map).
 	OpIterRange
-	// OpCall represents a function call.
+	// OpCall represents a function call, the operand is the number of
+	// arguments passed to the function.
 	OpCall
 	// OpReturn reprents a return keyword.
 	OpReturn
@@ -184,7 +185,7 @@ var definitions = map[Opcode]*OpDefinition{
 	OpJumpOnFalse: {"OpJumpOnFalse", []int{2}},
 	OpStepRange:   {"OpStepRange", nil},
 	OpIterRange:   {"OpIterRange", nil},
-	OpCall:        {"OpCall", nil},
+	OpCall:        {"OpCall", []int{2}},
 	OpReturn:      {"OpReturn", nil},
 }
 

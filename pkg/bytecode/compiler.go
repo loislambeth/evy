@@ -628,18 +628,30 @@ func (c *Compiler) compileIndexExpression(expr *parser.IndexExpression) error {
 func (c *Compiler) compileFuncCall(call *parser.FuncCall) error {
 	c.enterScope()
 	start := len(c.instructions)
+	for _, param := range call.FuncDef.Params {
+		c.symbolTable.Define(param.Name)
+	}
 	if err := c.Compile(call.FuncDef.Body); err != nil {
 		return err
 	}
+	numLocals := c.symbolTable.numLocals()
 	c.leaveScope()
 	// reset the bytecode
-	compiledFn := funcVal{Instructions: make(Instructions, len(c.instructions)-start)}
+	compiledFn := funcVal{
+		Instructions: make(Instructions, len(c.instructions)-start),
+		NumLocals:    numLocals,
+	}
 	copy(compiledFn.Instructions, c.instructions[start:])
 	c.instructions = c.instructions[:start]
 	if err := c.emit(OpConstant, c.addConstant(compiledFn)); err != nil {
 		return err
 	}
-	return c.emit(OpCall)
+	for _, arg := range call.Arguments {
+		if err := c.Compile(arg); err != nil {
+			return err
+		}
+	}
+	return c.emit(OpCall, len(call.Arguments))
 }
 
 func (c *Compiler) compileReturn(stmt *parser.ReturnStmt) error {
