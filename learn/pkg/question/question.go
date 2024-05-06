@@ -1,9 +1,11 @@
 package question
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"rsc.io/markdown"
@@ -45,8 +47,14 @@ type Model struct {
 
 	withSealed bool
 	privateKey string
+	embeds     map[markdown.Block]embed // use to replace markdown Link or Image with codeBlock or inline SVG
+	answerList markdown.Block           // use to output checkbox or radio buttons for List in HTML
 }
 
+type embed struct {
+	id       string
+	renderer Renderer
+}
 type fieldType uint
 
 const (
@@ -73,6 +81,7 @@ func NewModel(filename string, options ...Option) (*Model, error) {
 		Filename:    filename,
 		Doc:         doc,
 		Frontmatter: frontmatter,
+		embeds:      map[markdown.Block]embed{},
 	}
 	if err := model.buildModelForChoice(); err != nil {
 		return nil, err
@@ -150,6 +159,55 @@ func (m *Model) WriteFormatted() error {
 	return os.WriteFile(m.Filename, b, 0o666)
 }
 
+// PrintHTML prints the question and answer choices as HTML form elements.
+func (m *Model) PrintHTML(buf *bytes.Buffer) {
+	buf.WriteString("<form id=" + baseFilename(m.Filename) + ">\n")
+	for _, block := range m.Doc.Blocks {
+		if block == m.answerList {
+			m.printAnswerChoicesHTML(block.(*markdown.List), buf)
+			continue
+		}
+		if embed, ok := m.embeds[block]; ok {
+			embed.renderer.PrintHTML(buf)
+			continue
+		}
+		block.PrintHTML(buf)
+	}
+	buf.WriteString("</form>\n")
+}
+
+// ToHTML returns a complete standalone HTML document as string.
+func (m *Model) ToHTML() string {
+	buf := &bytes.Buffer{}
+	buf.WriteString(questionPrefixHTML)
+	m.PrintHTML(buf)
+	buf.WriteString(questionSuffixHTML)
+	return buf.String()
+}
+
+func baseFilename(filename string) string {
+	return strings.TrimSuffix(filepath.Base(filename), filepath.Ext(filename))
+}
+
+func (m *Model) printAnswerChoicesHTML(list *markdown.List, buf *bytes.Buffer) {
+	buf.WriteString("<fieldset>\n")
+	for i, item := range list.Items {
+		letter := indexToLetter(i)
+		buf.WriteString("<div>\n")
+		buf.WriteString(`<label for="` + letter + `">` + letter + "</label>\n")
+		buf.WriteString(`<input type="radio" id="` + letter + `" name="answer" />` + "\n")
+		for _, block := range item.(*markdown.Item).Blocks {
+			if embed, ok := m.embeds[block]; ok {
+				embed.renderer.PrintHTML(buf)
+			} else {
+				block.PrintHTML(buf)
+			}
+		}
+		buf.WriteString("</div>\n")
+	}
+	buf.WriteString("</fieldset>\n")
+}
+
 func (m *Model) getVerifiedAnswer() (Answer, error) {
 	answer, err := m.Frontmatter.getAnswer(m.privateKey)
 	if err != nil {
@@ -204,6 +262,7 @@ func (m *Model) buildQuestionField(b markdown.Block) error {
 	if err != nil {
 		return err
 	}
+	m.trackRepBlock(b, m.Question)
 	return nil
 }
 
@@ -225,6 +284,8 @@ func (m *Model) buildAnswerChoicesField(block markdown.Block) error {
 			if renderer != nil {
 				found = true
 				m.AnswerChoices = append(m.AnswerChoices, renderer)
+				m.answerList = block
+				m.trackRepBlock(b, renderer)
 			}
 		}
 	}
@@ -232,6 +293,33 @@ func (m *Model) buildAnswerChoicesField(block markdown.Block) error {
 		return fmt.Errorf("%w: found %d output rendering items, expected %d (one per list item)", ErrBadMarkdownStructure, len(m.AnswerChoices), len(list.Items))
 	}
 	return nil
+}
+
+func (m *Model) trackRepBlock(b markdown.Block, renderer Renderer) {
+	text := toText(b)
+	if renderer == nil || text == nil || len(text.Inline) != 1 {
+		return
+	}
+	id := idFromInline(text.Inline[0])
+	if id == "" {
+		return
+	}
+	m.embeds[b] = embed{id: id, renderer: renderer}
+}
+
+func idFromInline(inline markdown.Inline) string {
+	switch i := inline.(type) {
+	case *markdown.Link:
+		return escape(i.URL)
+	case *markdown.Image:
+		return escape(i.URL)
+	}
+	return ""
+}
+
+func escape(s string) string {
+	s = strings.ReplaceAll(s, "/", "-")
+	return strings.ReplaceAll(s, ".", "-")
 }
 
 func (m *Model) inferResultType() error {
@@ -261,3 +349,60 @@ func (m *Model) setPrivateKey(privateKey string) {
 	m.privateKey = privateKey
 	m.withSealed = true
 }
+
+const questionPrefixHTML = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>evy · Question</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡️</text></svg>" />
+    <style>
+      body {
+        padding: 8px 32px;
+        margin: 0;
+      }
+      fieldset {
+        display: grid;
+        grid-template: repeat(2, min-content) / repeat(2, min-content);
+        grid-auto-flow: column;
+        column-gap: 32px;
+        row-gap: 8px;
+        border: none;
+      }
+      pre {
+        border: 1px solid silver;
+        padding: 8px 12px;
+        border-radius: 2px;
+        background: whitesmoke;
+        width: fit-content;
+      }
+      fieldset > div {
+        display: flex;
+        align-items: start;
+        gap: 8px;
+        border: 1px solid silver;
+        border-radius: 6px;
+        padding: 8px;
+        background: whitesmoke;
+      }
+      fieldset pre {
+        margin: 0;
+        padding: 4px 12px;
+        align-self: center;
+        background: white;
+        border: 1px solid silver
+      }
+      form svg {
+        width: 200px;
+        height: 200px;
+        border: 1px solid silver;
+      }
+    </style>
+  </head>
+  <body>
+  `
+
+const questionSuffixHTML = `  </body>
+</html>
+`
